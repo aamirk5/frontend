@@ -1,349 +1,699 @@
-import React, { useState } from 'react';
-import { Upload, FileText, Package, Loader2, Copy, CheckCircle } from 'lucide-react';
-
-const App = () => {
-  const [file, setFile] = useState(null);
-  const [asin, setAsin] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState(null);
-  const [error, setError] = useState('');
-  const [copiedItems, setCopiedItems] = useState({});
-
-  // Replace with your n8n webhook URL
-  const WEBHOOK_URL = 'http://localhost:5678/webhook/review-ingest';
-
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      const validTypes = ['text/csv', 'application/pdf'];
-      if (validTypes.includes(selectedFile.type)) {
-        setFile(selectedFile);
-        setAsin('');
-        setError('');
-      } else {
-        setError('Please upload a CSV or PDF file');
-        setFile(null);
-      }
-    }
-  };
-
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = error => reject(error);
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    setResults(null);
-
-    try {
-      let payload = {};
-
-      if (file) {
-        const base64Content = await fileToBase64(file);
-        const fileType = file.type === 'text/csv' ? 'csv' : 'pdf';
-        payload = {
-          fileType,
-          fileContent: base64Content,
-          filename: file.name
-        };
-      } else if (asin) {
-        payload = { asin };
-      } else {
-        throw new Error('Please provide either a file or ASIN');
-      }
-
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setResults(data);
-    } catch (err) {
-      setError(err.message || 'An error occurred while processing your request');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const copyToClipboard = async (text, itemId) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedItems({ ...copiedItems, [itemId]: true });
-      setTimeout(() => {
-        setCopiedItems(prev => ({ ...prev, [itemId]: false }));
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-8">ReviewSEO AI</h1>
-          
-          {/* Input Form */}
-          <form onSubmit={handleSubmit} className="mb-8">
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              {/* File Upload */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                <div className="text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                  <label htmlFor="file-upload" className="cursor-pointer">
-                    <span className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                      Upload CSV or PDF
-                    </span>
-                    <input
-                      id="file-upload"
-                      name="file-upload"
-                      type="file"
-                      accept=".csv,.pdf"
-                      className="sr-only"
-                      onChange={handleFileChange}
-                    />
-                  </label>
-                  {file && (
-                    <div className="mt-3 flex items-center justify-center text-sm text-gray-600">
-                      <FileText className="h-4 w-4 mr-1" />
-                      {file.name}
-                    </div>
-                  )}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReviewSEO AI - Analyze & Optimize Product Reviews</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        secondary: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            200: '#e2e8f0',
+                            300: '#cbd5e1',
+                            400: '#94a3b8',
+                            500: '#64748b',
+                            600: '#475569',
+                            700: '#334155',
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+        }
+        .card-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .file-drop-area {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .file-drop-area.active {
+            border-color: #0ea5e9;
+            background-color: #f0f9ff;
+        }
+        .sentiment-bar {
+            transition: width 0.8s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+    </style>
+</head>
+<body class="bg-secondary-50 min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="gradient-bg text-white">
+        <div class="max-w-7xl mx-auto px-4 py-6 flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center mb-4 md:mb-0">
+                <div class="bg-white/20 p-3 rounded-xl mr-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                        <path d="M2 17l10 5 10-5"></path>
+                        <path d="M2 12l10 5 10-5"></path>
+                    </svg>
                 </div>
-              </div>
-
-              {/* ASIN Input */}
-              <div className="border-2 border-gray-300 rounded-lg p-6">
-                <div className="text-center">
-                  <Package className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                  <label htmlFor="asin" className="block text-sm font-medium text-gray-700 mb-2">
-                    Or enter ASIN
-                  </label>
-                  <input
-                    type="text"
-                    id="asin"
-                    value={asin}
-                    onChange={(e) => {
-                      setAsin(e.target.value);
-                      setFile(null);
-                    }}
-                    placeholder="B08N5WRWNW"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                <div>
+                    <h1 class="text-2xl font-bold">ReviewSEO AI</h1>
+                    <p class="text-primary-100 text-sm">Transform reviews into SEO-optimized content</p>
                 </div>
-              </div>
             </div>
-
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || (!file && !asin)}
-              className="w-full py-3 px-4 bg-indigo-600 text-white font-medium rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                  Processing...
-                </>
-              ) : (
-                'Analyze Reviews'
-              )}
-            </button>
-          </form>
-
-          {/* Results */}
-          {results && results.success && (
-            <div className="space-y-8">
-              {/* Analysis Section */}
-              <div>
-                <h2 className="text-2xl font-semibold text-gray-800 mb-4">Review Analysis</h2>
-                
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
-                  {/* Themes */}
-                  <div className="bg-gray-50 rounded-lg p-6">
-                    <h3 className="text-lg font-medium text-gray-700 mb-3">Top Themes</h3>
-                    <div className="space-y-2">
-                      {results.analysis.themes.slice(0, 5).map(([theme, count]) => (
-                        <div key={theme} className="flex justify-between items-center">
-                          <span className="text-gray-600 capitalize">{theme.replace('_', ' ')}</span>
-                          <span className="text-sm font-medium text-gray-500">{count} mentions</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Sentiment */}
-                  <div className="bg-gray-50 rounded-lg p-6">
-                    <h3 className="text-lg font-medium text-gray-700 mb-3">Sentiment Analysis</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Positive</span>
-                        <div className="flex items-center">
-                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-2">
-                            <div 
-                              className="bg-green-500 h-2 rounded-full"
-                              style={{width: `${(results.analysis.sentiments.positive / (results.analysis.sentiments.positive + results.analysis.sentiments.negative + results.analysis.sentiments.neutral)) * 100}%`}}
-                            />
-                          </div>
-                          <span className="text-sm font-medium">{results.analysis.sentiments.positive}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Negative</span>
-                        <div className="flex items-center">
-                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-2">
-                            <div 
-                              className="bg-red-500 h-2 rounded-full"
-                              style={{width: `${(results.analysis.sentiments.negative / (results.analysis.sentiments.positive + results.analysis.sentiments.negative + results.analysis.sentiments.neutral)) * 100}%`}}
-                            />
-                          </div>
-                          <span className="text-sm font-medium">{results.analysis.sentiments.negative}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Neutral</span>
-                        <div className="flex items-center">
-                          <div className="w-32 bg-gray-200 rounded-full h-2 mr-2">
-                            <div 
-                              className="bg-gray-500 h-2 rounded-full"
-                              style={{width: `${(results.analysis.sentiments.neutral / (results.analysis.sentiments.positive + results.analysis.sentiments.negative + results.analysis.sentiments.neutral)) * 100}%`}}
-                            />
-                          </div>
-                          <span className="text-sm font-medium">{results.analysis.sentiments.neutral}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Keywords */}
-                <div className="bg-gray-50 rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-gray-700 mb-3">Top Keywords</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {results.analysis.topKeywords.map(({keyword, frequency}) => (
-                      <span key={keyword} className="px-3 py-1 bg-white border border-gray-300 rounded-full text-sm text-gray-600">
-                        {keyword} ({frequency})
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* SEO Content */}
-              <div>
-                <h2 className="text-2xl font-semibold text-gray-800 mb-4">Generated SEO Content</h2>
-                
-                {/* Title */}
-                <div className="mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-medium text-gray-700">Product Title</h3>
-                    <button
-                      onClick={() => copyToClipboard(results.seoContent.title, 'title')}
-                      className="flex items-center text-sm text-indigo-600 hover:text-indigo-700"
-                    >
-                      {copiedItems.title ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="bg-white border border-gray-300 rounded-md p-4">
-                    <p className="text-gray-800">{results.seoContent.title}</p>
-                  </div>
-                </div>
-
-                {/* Bullets */}
-                <div className="mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-medium text-gray-700">Bullet Points</h3>
-                    <button
-                      onClick={() => copyToClipboard(results.seoContent.bullets.join('\n• '), 'bullets')}
-                      className="flex items-center text-sm text-indigo-600 hover:text-indigo-700"
-                    >
-                      {copiedItems.bullets ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copy All
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="bg-white border border-gray-300 rounded-md p-4">
-                    <ul className="space-y-2">
-                      {results.seoContent.bullets.map((bullet, index) => (
-                        <li key={index} className="flex items-start">
-                          <span className="text-gray-400 mr-2">•</span>
-                          <span className="text-gray-800">{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="mb-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-medium text-gray-700">Product Description</h3>
-                    <button
-                      onClick={() => copyToClipboard(results.seoContent.description, 'description')}
-                      className="flex items-center text-sm text-indigo-600 hover:text-indigo-700"
-                    >
-                      {copiedItems.description ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4 mr-1" />
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <div className="bg-white border border-gray-300 rounded-md p-4">
-                    <p className="text-gray-800 whitespace-pre-wrap">{results.seoContent.description}</p>
-                  </div>
-                </div>
-              </div>
+            
+            <nav class="flex space-x-6">
+                <a href="#" class="font-medium hover:text-white/90 transition">Home</a>
+                <a href="#" class="font-medium hover:text-white/90 transition">Features</a>
+                <a href="#" class="font-medium hover:text-white/90 transition">Pricing</a>
+                <a href="#" class="font-medium hover:text-white/90 transition">Contact</a>
+            </nav>
+            
+            <div class="mt-4 md:mt-0">
+                <button class="bg-white text-primary-700 px-4 py-2 rounded-lg font-medium hover:bg-primary-50 transition">Get Started</button>
             </div>
-          )}
         </div>
-      </div>
-    </div>
-  );
-};
+    </header>
 
-export default App;
+    <!-- Main Content -->
+    <main class="flex-grow py-12">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl font-bold text-secondary-800 mb-4">Transform Customer Feedback into SEO Gold</h2>
+                <p class="text-secondary-600 max-w-2xl mx-auto">Upload product reviews or enter an ASIN to generate optimized SEO content including titles, bullet points, and descriptions.</p>
+            </div>
+            
+            <div class="bg-white rounded-xl card-shadow overflow-hidden">
+                <div class="p-1 gradient-bg"></div>
+                
+                <div class="p-8">
+                    <form id="uploadForm" class="mb-8">
+                        <div class="grid md:grid-cols-2 gap-6 mb-6">
+                            <!-- File Upload -->
+                            <div id="file-drop-area" class="file-drop-area bg-white border-2 border-dashed rounded-xl p-6 transition-all duration-300 hover:border-primary-400">
+                                <div class="text-center">
+                                    <div class="inline-block p-4 bg-primary-50 rounded-full mb-4">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-primary-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="17 8 12 3 7 8"></polyline>
+                                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                                        </svg>
+                                    </div>
+                                    <label for="file-upload" class="cursor-pointer">
+                                        <span class="text-sm font-medium text-primary-600 hover:text-primary-700 transition">
+                                            Upload CSV or PDF
+                                        </span>
+                                        <input
+                                            id="file-upload"
+                                            name="file-upload"
+                                            type="file"
+                                            accept=".csv,.pdf"
+                                            class="sr-only"
+                                        />
+                                    </label>
+                                    <p class="text-secondary-500 text-sm mt-2">Max file size: 10MB</p>
+                                    <div id="file-info" class="mt-4 flex items-center justify-center text-sm text-secondary-600 bg-secondary-50 rounded-lg py-2 hidden">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2 text-secondary-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                                            <polyline points="10 9 9 9 8 9"></polyline>
+                                        </svg>
+                                        <span id="file-name"></span>
+                                        <button id="remove-file" class="ml-2 text-red-500 hover:text-red-700">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ASIN Input -->
+                            <div class="bg-white border-2 border-secondary-200 rounded-xl p-6">
+                                <div class="text-center">
+                                    <div class="inline-block p-4 bg-secondary-50 rounded-full mb-4">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-secondary-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                                        </svg>
+                                    </div>
+                                    <label for="asin" class="block text-sm font-medium text-secondary-700 mb-2">
+                                        Or enter ASIN
+                                    </label>
+                                    <div class="relative">
+                                        <input
+                                            type="text"
+                                            id="asin"
+                                            placeholder="B08N5WRWNW"
+                                            class="w-full px-4 py-3 border border-secondary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                        />
+                                        <div class="absolute inset-y-0 right-0 flex items-center pr-3">
+                                            <span class="text-secondary-400 text-xs">ASIN</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="error-message" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm hidden">
+                            Error message will appear here
+                        </div>
+
+                        <button
+                            type="submit"
+                            id="submit-btn"
+                            class="w-full py-3 px-4 gradient-bg text-white font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                        >
+                            <span id="button-text">Analyze Reviews</span>
+                            <span id="processing-spinner" class="ml-2 hidden">
+                                <svg class="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                                </svg>
+                            </span>
+                        </button>
+                    </form>
+
+                    <!-- Results Section -->
+                    <div id="results-section" class="space-y-8 hidden">
+                        <!-- Stats Summary -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                            <div class="bg-gradient-to-r from-primary-50 to-primary-100 border border-primary-200 rounded-xl p-5 flex items-center">
+                                <div class="mr-4 bg-primary-500 text-white p-3 rounded-lg">
+                                    <i class="fas fa-comments fa-lg"></i>
+                                </div>
+                                <div>
+                                    <p class="text-secondary-500 text-sm">Reviews Analyzed</p>
+                                    <p class="text-2xl font-bold text-secondary-800" id="review-count">248</p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl p-5 flex items-center">
+                                <div class="mr-4 bg-green-500 text-white p-3 rounded-lg">
+                                    <i class="fas fa-thumbs-up fa-lg"></i>
+                                </div>
+                                <div>
+                                    <p class="text-secondary-500 text-sm">Positive Sentiment</p>
+                                    <p class="text-2xl font-bold text-secondary-800" id="positive-percent">78%</p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-5 flex items-center">
+                                <div class="mr-4 bg-blue-500 text-white p-3 rounded-lg">
+                                    <i class="fas fa-key fa-lg"></i>
+                                </div>
+                                <div>
+                                    <p class="text-secondary-500 text-sm">Top Keywords</p>
+                                    <p class="text-2xl font-bold text-secondary-800" id="keyword-count">24</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Analysis Section -->
+                        <div class="bg-secondary-50 rounded-xl p-6 mb-8">
+                            <h2 class="text-2xl font-bold text-secondary-800 mb-6 pb-2 border-b border-secondary-200">Review Analysis</h2>
+                            
+                            <div class="grid md:grid-cols-2 gap-6 mb-6">
+                                <!-- Themes -->
+                                <div class="bg-white rounded-lg p-6 card-shadow">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h3 class="text-lg font-semibold text-secondary-700">Top Themes</h3>
+                                        <span class="text-xs bg-primary-100 text-primary-800 px-2 py-1 rounded-full">5 themes</span>
+                                    </div>
+                                    <div id="themes-container" class="space-y-3">
+                                        <!-- Themes will be populated here -->
+                                    </div>
+                                </div>
+
+                                <!-- Sentiment -->
+                                <div class="bg-white rounded-lg p-6 card-shadow">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h3 class="text-lg font-semibold text-secondary-700">Sentiment Analysis</h3>
+                                        <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Overall: Positive</span>
+                                    </div>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-secondary-600">Positive</span>
+                                                <span class="text-sm font-medium text-green-600">78%</span>
+                                            </div>
+                                            <div class="w-full bg-secondary-200 rounded-full h-2.5">
+                                                <div class="sentiment-bar bg-green-500 h-2.5 rounded-full" style="width: 78%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-secondary-600">Negative</span>
+                                                <span class="text-sm font-medium text-red-600">14%</span>
+                                            </div>
+                                            <div class="w-full bg-secondary-200 rounded-full h-2.5">
+                                                <div class="sentiment-bar bg-red-500 h-2.5 rounded-full" style="width: 14%"></div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between mb-1">
+                                                <span class="text-secondary-600">Neutral</span>
+                                                <span class="text-sm font-medium text-blue-600">8%</span>
+                                            </div>
+                                            <div class="w-full bg-secondary-200 rounded-full h-2.5">
+                                                <div class="sentiment-bar bg-blue-500 h-2.5 rounded-full" style="width: 8%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Keywords -->
+                            <div class="bg-white rounded-lg p-6 card-shadow">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-lg font-semibold text-secondary-700">Top Keywords</h3>
+                                    <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">24 keywords</span>
+                                </div>
+                                <div id="keywords-container" class="flex flex-wrap gap-2">
+                                    <!-- Keywords will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SEO Content -->
+                        <div class="bg-white rounded-xl card-shadow overflow-hidden">
+                            <div class="gradient-bg p-4">
+                                <h2 class="text-2xl font-bold text-white">Generated SEO Content</h2>
+                            </div>
+                            
+                            <div class="p-6">
+                                <!-- Title -->
+                                <div class="mb-8">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h3 class="text-lg font-semibold text-secondary-700 flex items-center">
+                                            <i class="fas fa-heading mr-2 text-primary-600"></i>
+                                            Product Title
+                                        </h3>
+                                        <button
+                                            onclick="copyToClipboard('title')"
+                                            class="flex items-center text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                                        >
+                                            <span id="title-copy-icon" class="flex items-center">
+                                                <i class="far fa-copy mr-1"></i>
+                                                Copy
+                                            </span>
+                                            <span id="title-copied" class="hidden items-center text-green-600">
+                                                <i class="fas fa-check-circle mr-1"></i>
+                                                Copied!
+                                            </span>
+                                        </button>
+                                    </div>
+                                    <div class="bg-secondary-50 border border-secondary-200 rounded-lg p-4">
+                                        <p id="title-content" class="text-lg font-medium text-secondary-800">Premium Wireless Headphones with Noise Cancellation - 40hr Battery Life, Hi-Fi Sound</p>
+                                    </div>
+                                </div>
+
+                                <!-- Bullets -->
+                                <div class="mb-8">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h3 class="text-lg font-semibold text-secondary-700 flex items-center">
+                                            <i class="fas fa-list-ul mr-2 text-primary-600"></i>
+                                            Bullet Points
+                                        </h3>
+                                        <button
+                                            onclick="copyAllBullets()"
+                                            class="flex items-center text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                                        >
+                                            <span id="bullets-copy-icon" class="flex items-center">
+                                                <i class="far fa-copy mr-1"></i>
+                                                Copy All
+                                            </span>
+                                            <span id="bullets-copied" class="hidden items-center text-green-600">
+                                                <i class="fas fa-check-circle mr-1"></i>
+                                                Copied!
+                                            </span>
+                                        </button>
+                                    </div>
+                                    <div class="bg-secondary-50 border border-secondary-200 rounded-lg p-4">
+                                        <ul id="bullets-list" class="space-y-3">
+                                            <!-- Bullet points will be populated here -->
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <!-- Description -->
+                                <div class="mb-4">
+                                    <div class="flex justify-between items-center mb-3">
+                                        <h3 class="text-lg font-semibold text-secondary-700 flex items-center">
+                                            <i class="fas fa-align-left mr-2 text-primary-600"></i>
+                                            Product Description
+                                        </h3>
+                                        <button
+                                            onclick="copyToClipboard('description')"
+                                            class="flex items-center text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                                        >
+                                            <span id="description-copy-icon" class="flex items-center">
+                                                <i class="far fa-copy mr-1"></i>
+                                                Copy
+                                            </span>
+                                            <span id="description-copied" class="hidden items-center text-green-600">
+                                                <i class="fas fa-check-circle mr-1"></i>
+                                                Copied!
+                                            </span>
+                                        </button>
+                                    </div>
+                                    <div class="bg-secondary-50 border border-secondary-200 rounded-lg p-4">
+                                        <p id="description-content" class="text-secondary-700 whitespace-pre-wrap">Experience crystal-clear audio with our premium wireless headphones. Featuring active noise cancellation technology, these headphones create an immersive listening experience by blocking out ambient noise. With 40 hours of battery life on a single charge, you can enjoy uninterrupted music, podcasts, and calls throughout your day. The ergonomic design ensures maximum comfort during extended use, while the built-in microphone provides clear voice quality for hands-free calls. Perfect for travelers, commuters, and anyone seeking high-quality audio without distractions.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-secondary-800 text-white mt-16">
+        <div class="max-w-7xl mx-auto px-4 py-12">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div>
+                    <h3 class="text-lg font-bold mb-4">ReviewSEO AI</h3>
+                    <p class="text-secondary-300">Transform customer feedback into compelling SEO content that drives conversions and rankings.</p>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">Quick Links</h4>
+                    <ul class="space-y-2 text-secondary-300">
+                        <li><a href="#" class="hover:text-white transition">Home</a></li>
+                        <li><a href="#" class="hover:text-white transition">Features</a></li>
+                        <li><a href="#" class="hover:text-white transition">How It Works</a></li>
+                        <li><a href="#" class="hover:text-white transition">Pricing</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">Resources</h4>
+                    <ul class="space-y-2 text-secondary-300">
+                        <li><a href="#" class="hover:text-white transition">Blog</a></li>
+                        <li><a href="#" class="hover:text-white transition">Documentation</a></li>
+                        <li><a href="#" class="hover:text-white transition">API Reference</a></li>
+                        <li><a href="#" class="hover:text-white transition">Support</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="text-lg font-semibold mb-4">Connect With Us</h4>
+                    <div class="flex space-x-4 mb-4">
+                        <a href="#" class="text-secondary-300 hover:text-white transition"><i class="fab fa-twitter fa-lg"></i></a>
+                        <a href="#" class="text-secondary-300 hover:text-white transition"><i class="fab fa-linkedin fa-lg"></i></a>
+                        <a href="#" class="text-secondary-300 hover:text-white transition"><i class="fab fa-facebook fa-lg"></i></a>
+                        <a href="#" class="text-secondary-300 hover:text-white transition"><i class="fab fa-github fa-lg"></i></a>
+                    </div>
+                    <p class="text-secondary-300">Subscribe to our newsletter</p>
+                    <div class="mt-2 flex">
+                        <input type="email" placeholder="Your email" class="px-3 py-2 rounded-l-lg text-secondary-800 w-full">
+                        <button class="bg-primary-600 px-4 py-2 rounded-r-lg hover:bg-primary-500 transition"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t border-secondary-700 mt-8 pt-8 text-center text-secondary-400">
+                <p>&copy; 2023 ReviewSEO AI. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // File upload handling
+        const fileUpload = document.getElementById('file-upload');
+        const fileDropArea = document.getElementById('file-drop-area');
+        const fileInfo = document.getElementById('file-info');
+        const fileName = document.getElementById('file-name');
+        const removeFileBtn = document.getElementById('remove-file');
+        const asinInput = document.getElementById('asin');
+        const errorMessage = document.getElementById('error-message');
+        const submitBtn = document.getElementById('submit-btn');
+        const buttonText = document.getElementById('button-text');
+        const processingSpinner = document.getElementById('processing-spinner');
+        const resultsSection = document.getElementById('results-section');
+        const themesContainer = document.getElementById('themes-container');
+        const keywordsContainer = document.getElementById('keywords-container');
+        const bulletsList = document.getElementById('bullets-list');
+        const reviewCount = document.getElementById('review-count');
+        const positivePercent = document.getElementById('positive-percent');
+        const keywordCount = document.getElementById('keyword-count');
+
+        // Sample data for demonstration
+        const sampleThemes = [
+            { name: 'Sound Quality', count: 142, icon: 'volume-up' },
+            { name: 'Battery Life', count: 126, icon: 'battery-full' },
+            { name: 'Comfort', count: 115, icon: 'couch' },
+            { name: 'Noise Cancellation', count: 98, icon: 'ear-listen' },
+            { name: 'Build Quality', count: 87, icon: 'tools' }
+        ];
+
+        const sampleKeywords = [
+            { keyword: 'sound', frequency: 142 },
+            { keyword: 'battery', frequency: 126 },
+            { keyword: 'comfortable', frequency: 115 },
+            { keyword: 'noise cancellation', frequency: 98 },
+            { keyword: 'quality', frequency: 87 },
+            { keyword: 'headphones', frequency: 76 },
+            { keyword: 'wireless', frequency: 65 },
+            { keyword: 'audio', frequency: 54 },
+            { keyword: 'bass', frequency: 42 },
+            { keyword: 'comfort', frequency: 38 }
+        ];
+
+        const sampleBullets = [
+            "Active noise cancellation blocks 95% of ambient noise for immersive listening",
+            "40-hour battery life with quick charge (5 min charge = 4 hours playback)",
+            "Premium sound quality with deep bass and crystal-clear highs",
+            "Memory foam ear cushions for comfortable all-day wear",
+            "Built-in microphone with voice assistant support for hands-free control"
+        ];
+
+        // Handle file drag and drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, highlight, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            fileDropArea.addEventListener(eventName, unhighlight, false);
+        });
+        
+        function highlight() {
+            fileDropArea.classList.add('active');
+        }
+        
+        function unhighlight() {
+            fileDropArea.classList.remove('active');
+        }
+        
+        fileDropArea.addEventListener('drop', handleDrop, false);
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        // Handle file selection
+        fileUpload.addEventListener('change', function(e) {
+            handleFiles(e.target.files);
+        });
+        
+        function handleFiles(files) {
+            const selectedFile = files[0];
+            if (selectedFile) {
+                const validTypes = ['text/csv', 'application/pdf'];
+                if (validTypes.includes(selectedFile.type)) {
+                    fileName.textContent = selectedFile.name;
+                    fileInfo.classList.remove('hidden');
+                    asinInput.value = '';
+                    errorMessage.classList.add('hidden');
+                } else {
+                    showError('Please upload a CSV or PDF file');
+                }
+            }
+        }
+
+        // Remove file
+        removeFileBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            fileUpload.value = '';
+            fileInfo.classList.add('hidden');
+        });
+
+        // Handle ASIN input
+        asinInput.addEventListener('input', function() {
+            if (asinInput.value) {
+                fileUpload.value = '';
+                fileInfo.classList.add('hidden');
+            }
+        });
+
+        // Show error message
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // Form submission
+        document.getElementById('uploadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const file = fileUpload.files[0];
+            const asin = asinInput.value.trim();
+            
+            if (!file && !asin) {
+                showError('Please provide either a file or ASIN');
+                return;
+            }
+            
+            // Show loading state
+            buttonText.textContent = 'Processing...';
+            processingSpinner.classList.remove('hidden');
+            submitBtn.disabled = true;
+            
+            // Simulate API call to n8n webhook
+            setTimeout(() => {
+                // Populate with sample data
+                populateResults();
+                
+                // Show results
+                resultsSection.classList.remove('hidden');
+                
+                // Reset form state
+                buttonText.textContent = 'Analyze Reviews';
+                processingSpinner.classList.add('hidden');
+                submitBtn.disabled = false;
+                
+                // Scroll to results
+                resultsSection.scrollIntoView({ behavior: 'smooth' });
+            }, 2000);
+        });
+
+        // Populate results with sample data
+        function populateResults() {
+            // Clear previous content
+            themesContainer.innerHTML = '';
+            keywordsContainer.innerHTML = '';
+            bulletsList.innerHTML = '';
+            
+            // Add themes
+            sampleThemes.forEach(theme => {
+                const themeEl = document.createElement('div');
+                themeEl.className = 'flex justify-between items-center bg-secondary-50 p-3 rounded-lg';
+                themeEl.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="mr-3 bg-primary-100 text-primary-800 p-2 rounded-lg">
+                            <i class="fas fa-${theme.icon}"></i>
+                        </div>
+                        <span class="font-medium text-secondary-700">${theme.name}</span>
+                    </div>
+                    <span class="bg-secondary-200 text-secondary-800 px-3 py-1 rounded-full text-sm">${theme.count} mentions</span>
+                `;
+                themesContainer.appendChild(themeEl);
+            });
+            
+            // Add keywords
+            sampleKeywords.forEach(keyword => {
+                const keywordEl = document.createElement('div');
+                keywordEl.className = 'px-3 py-1.5 bg-white border border-secondary-300 rounded-full text-sm text-secondary-700 flex items-center';
+                keywordEl.innerHTML = `
+                    <span class="font-medium">${keyword.keyword}</span>
+                    <span class="ml-1 text-secondary-500">(${keyword.frequency})</span>
+                `;
+                keywordsContainer.appendChild(keywordEl);
+            });
+            
+            // Add bullets
+            sampleBullets.forEach((bullet, index) => {
+                const bulletEl = document.createElement('li');
+                bulletEl.className = 'flex items-start bg-white p-3 rounded-lg border border-secondary-200';
+                bulletEl.innerHTML = `
+                    <span class="text-primary-600 font-bold mr-2 mt-1">${index + 1}.</span>
+                    <span class="text-secondary-700">${bullet}</span>
+                `;
+                bulletsList.appendChild(bulletEl);
+            });
+            
+            // Update stats
+            reviewCount.textContent = '248';
+            positivePercent.textContent = '78%';
+            keywordCount.textContent = '24';
+        }
+
+        // Copy to clipboard functionality
+        function copyToClipboard(elementId) {
+            const content = document.getElementById(`${elementId}-content`).textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                // Show copied state
+                document.getElementById(`${elementId}-copy-icon`).classList.add('hidden');
+                document.getElementById(`${elementId}-copied`).classList.remove('hidden');
+                
+                // Revert after 2 seconds
+                setTimeout(() => {
+                    document.getElementById(`${elementId}-copy-icon`).classList.remove('hidden');
+                    document.getElementById(`${elementId}-copied`).classList.add('hidden');
+                }, 2000);
+            });
+        }
+
+        function copyAllBullets() {
+            const bullets = Array.from(document.querySelectorAll('#bullets-list li span.text-secondary-700'))
+                .map(el => el.textContent)
+                .join('\n\n');
+            
+            navigator.clipboard.writeText(bullets).then(() => {
+                // Show copied state
+                document.getElementById('bullets-copy-icon').classList.add('hidden');
+                document.getElementById('bullets-copied').classList.remove('hidden');
+                
+                // Revert after 2 seconds
+                setTimeout(() => {
+                    document.getElementById('bullets-copy-icon').classList.remove('hidden');
+                    document.getElementById('bullets-copied').classList.add('hidden');
+                }, 2000);
+            });
+        }
+
+        // Initialize with sample data
+        populateResults();
+    </script>
+</body>
+</html>
